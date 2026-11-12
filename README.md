@@ -7,7 +7,7 @@ The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
 - **Database:** SQL Server (tested on SQL Server 2019 Express LocalDB and SQL Server 2022), T-SQL only, compatible with Azure SQL Database
 - **API:** C# / ASP.NET Core 10 (LTS), Dapper calling stored procedures only
 - **Tests:** xUnit: 82 unit tests and 79 integration tests against a real SQL Server
-- **Extras:** API key authentication, OpenAPI + Swagger UI, structured logging, health check, Docker Compose, GitHub Actions CI
+- **Extras:** API key authentication, OpenAPI + Swagger UI, structured logging, health check, Docker Compose, GitHub Actions workflow
 
 ---
 
@@ -291,9 +291,18 @@ Logging uses `ILogger` with structured properties: HTTP method/path/status/durat
 
 - `Dockerfile`: multi-stage build, runs as the non-root `app` user.
 - `docker-compose.yml`: `sqlserver` (2022, health-checked) → `db-init` (runs `database/deploy.sh`) → `api`. The API connects with the execute-only `ae_api` login. Secrets come from `.env` (template: `.env.example`).
-- `.github/workflows/ci.yml`:
+- `.github/workflows/ci.yml` (GitHub Actions):
   - restore, build (warnings as errors), unit tests, integration tests against a SQL Server 2022 service container;
   - then `docker compose up` with a smoke test (health, crew list, report, 401 without key).
+
+GitHub Actions is not enabled on this repository. The same pipeline can be run locally:
+
+```bash
+dotnet build --configuration Release
+dotnet test tests/AeShipManagement.UnitTests --configuration Release
+dotnet test tests/AeShipManagement.IntegrationTests --configuration Release
+docker compose up --build
+```
 
 ---
 
