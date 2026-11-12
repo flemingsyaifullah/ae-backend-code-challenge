@@ -19,15 +19,56 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AeShipManagement.UnitTests"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "database", "database", "{5D1E2C0A-6F2B-4C1E-9A3B-0E7F4D2A1B01}"
 	ProjectSection(SolutionItems) = preProject
-		database\01_schema.sql = database\01_schema.sql
-		database\02_functions_views.sql = database\02_functions_views.sql
-		database\03_procedures.sql = database\03_procedures.sql
-		database\04_seed_reference.sql = database\04_seed_reference.sql
-		database\05_seed_sample.sql = database\05_seed_sample.sql
-		database\06_api_login.sql = database\06_api_login.sql
+		database\ERD.md = database\ERD.md
+		database\deploy-order.txt = database\deploy-order.txt
 		database\deploy.ps1 = database\deploy.ps1
 		database\deploy.sh = database\deploy.sh
-		database\ERD.md = database\ERD.md
+		database\schema.sql = database\schema.sql
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "views", "views", "{8A4B5F3D-9C5E-4F4B-8D6E-3B0C7A5D4E04}"
+	ProjectSection(SolutionItems) = preProject
+		database\views\vw_AccountHierarchy.sql = database\views\vw_AccountHierarchy.sql
+		database\views\vw_AccountTree.sql = database\views\vw_AccountTree.sql
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "functions", "functions", "{9B5C6A4E-AD6F-4A5C-9E7F-4C1D8B6E5F05}"
+	ProjectSection(SolutionItems) = preProject
+		database\functions\fn_AgeInYears.sql = database\functions\fn_AgeInYears.sql
+		database\functions\fn_ContainsPattern.sql = database\functions\fn_ContainsPattern.sql
+		database\functions\fn_CrewStatus.sql = database\functions\fn_CrewStatus.sql
+		database\functions\fn_FinancialReport.sql = database\functions\fn_FinancialReport.sql
+		database\functions\fn_FiscalYtdRange.sql = database\functions\fn_FiscalYtdRange.sql
+		database\functions\fn_FormatDisplayDate.sql = database\functions\fn_FormatDisplayDate.sql
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "procedures", "procedures", "{AC6D7B5F-BE7A-4B6D-8F8A-5D2E9C7F6A06}"
+	ProjectSection(SolutionItems) = preProject
+		database\procedures\usp_Crew_ListByShip.sql = database\procedures\usp_Crew_ListByShip.sql
+		database\procedures\usp_FinancialReport_Detail.sql = database\procedures\usp_FinancialReport_Detail.sql
+		database\procedures\usp_FinancialReport_Get.sql = database\procedures\usp_FinancialReport_Get.sql
+		database\procedures\usp_FinancialReport_Summary.sql = database\procedures\usp_FinancialReport_Summary.sql
+		database\procedures\usp_Ship_Create.sql = database\procedures\usp_Ship_Create.sql
+		database\procedures\usp_Ship_GetByCode.sql = database\procedures\usp_Ship_GetByCode.sql
+		database\procedures\usp_Ship_List.sql = database\procedures\usp_Ship_List.sql
+		database\procedures\usp_UserRole_List.sql = database\procedures\usp_UserRole_List.sql
+		database\procedures\usp_UserShip_Assign.sql = database\procedures\usp_UserShip_Assign.sql
+		database\procedures\usp_UserShip_ListShipsByUser.sql = database\procedures\usp_UserShip_ListShipsByUser.sql
+		database\procedures\usp_UserShip_Unassign.sql = database\procedures\usp_UserShip_Unassign.sql
+		database\procedures\usp_User_Create.sql = database\procedures\usp_User_Create.sql
+		database\procedures\usp_User_GetById.sql = database\procedures\usp_User_GetById.sql
+		database\procedures\usp_User_List.sql = database\procedures\usp_User_List.sql
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "seed", "seed", "{BD7E8C6A-CF8B-4C7E-9A9B-6E3FAD8A7B07}"
+	ProjectSection(SolutionItems) = preProject
+		database\seed\reference_data.sql = database\seed\reference_data.sql
+		database\seed\sample_data.sql = database\seed\sample_data.sql
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "security", "security", "{CE8F9D7B-DA9C-4D8F-8BAC-7F4ABE9B8C08}"
+	ProjectSection(SolutionItems) = preProject
+		database\security\api_login.sql = database\security\api_login.sql
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{6E2F3D1B-7A3C-4D2F-8B4C-1F8A5E3B2C02}"
@@ -126,6 +167,11 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{8A4B5F3D-9C5E-4F4B-8D6E-3B0C7A5D4E04} = {5D1E2C0A-6F2B-4C1E-9A3B-0E7F4D2A1B01}
+		{9B5C6A4E-AD6F-4A5C-9E7F-4C1D8B6E5F05} = {5D1E2C0A-6F2B-4C1E-9A3B-0E7F4D2A1B01}
+		{AC6D7B5F-BE7A-4B6D-8F8A-5D2E9C7F6A06} = {5D1E2C0A-6F2B-4C1E-9A3B-0E7F4D2A1B01}
+		{BD7E8C6A-CF8B-4C7E-9A9B-6E3FAD8A7B07} = {5D1E2C0A-6F2B-4C1E-9A3B-0E7F4D2A1B01}
+		{CE8F9D7B-DA9C-4D8F-8BAC-7F4ABE9B8C08} = {5D1E2C0A-6F2B-4C1E-9A3B-0E7F4D2A1B01}
 		{87EFCFD6-D961-4865-9726-2514573468C4} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{CD15505A-FB03-4161-9D12-4601A58C5FE1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{C34D8899-B9C9-4025-B4C2-172B8D981449} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}

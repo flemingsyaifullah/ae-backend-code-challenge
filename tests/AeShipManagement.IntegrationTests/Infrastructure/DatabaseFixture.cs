@@ -9,8 +9,7 @@ public sealed partial class DatabaseFixture : IAsyncLifetime
     private const string DefaultMasterConnection =
         @"Server=localhost\SQLEXPRESS;Database=master;Integrated Security=true;TrustServerCertificate=true";
 
-    private static readonly string[] Scripts =
-        ["01_schema.sql", "02_functions_views.sql", "03_procedures.sql", "04_seed_reference.sql", "05_seed_sample.sql"];
+    private static readonly string DatabaseFolder = Path.Combine(AppContext.BaseDirectory, "Database");
 
     private readonly string _masterConnectionString =
         Environment.GetEnvironmentVariable(MasterConnectionVariable) is { Length: > 0 } configured
@@ -35,9 +34,13 @@ public sealed partial class DatabaseFixture : IAsyncLifetime
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
 
-        foreach (var script in Scripts)
+        var scripts = (await File.ReadAllLinesAsync(Path.Combine(DatabaseFolder, "deploy-order.txt")))
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0);
+
+        foreach (var script in scripts)
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "Database", script);
+            var path = Path.Combine(DatabaseFolder, script.Replace('/', Path.DirectorySeparatorChar));
             foreach (var batch in BatchSeparator().Split(await File.ReadAllTextAsync(path)))
             {
                 if (!string.IsNullOrWhiteSpace(batch))

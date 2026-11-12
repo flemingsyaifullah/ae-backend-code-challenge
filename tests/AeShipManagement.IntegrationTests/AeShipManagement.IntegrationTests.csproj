@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\database\*.sql" Link="Database\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\database\**\*.sql;..\..\database\deploy-order.txt" LinkBase="Database" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

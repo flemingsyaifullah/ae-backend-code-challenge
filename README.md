@@ -97,7 +97,7 @@ flowchart LR
 
 **Why not microservices?** The brief asks for REST APIs over one SQL Server database. Everything revolves around the ship (crew, finance, users), so splitting into services would add network hops, data duplication and operational cost with no benefit at this size. The feature folders (Users, Ships, Crew, FinancialReports) keep boundaries clear, so a module could be extracted later if load or team structure required it.
 
-**Stored-procedure-only access is enforced, not just followed.** The API connects as `ae_api`, a login that only has `EXECUTE` on schema `dbo` (`database/06_api_login.sql`). Direct `SELECT`/`UPDATE` on tables or views fails with error 229. This is covered by integration tests.
+**Stored-procedure-only access is enforced, not just followed.** The API connects as `ae_api`, a login that only has `EXECUTE` on schema `dbo` (`database/security/api_login.sql`). Direct `SELECT`/`UPDATE` on tables or views fails with error 229. This is covered by integration tests.
 
 Other choices:
 
@@ -112,14 +112,18 @@ Other choices:
 
 ERD: [database/ERD.md](database/ERD.md) (Mermaid, rendered by GitHub).
 
-| Script | Content |
+One database object per file, so each procedure or function can be read and reviewed on its own:
+
+| Path | Content |
 |---|---|
-| `01_schema.sql` | Tables, primary/foreign keys, check constraints, indexes |
-| `02_functions_views.sql` | Inline table-valued functions and views reused by procedures |
-| `03_procedures.sql` | All stored procedures used by the API |
-| `04_seed_reference.sql` | Fiscal year types, nationalities, ranks, roles, chart of accounts |
-| `05_seed_sample.sql` | Ships, users, crew and service history, budgets, actual transactions |
-| `06_api_login.sql` | Execute-only login/user for the API (optional, parameterised) |
+| `schema.sql` | Tables, primary/foreign keys, check constraints, indexes |
+| `views/` | `vw_AccountTree`, `vw_AccountHierarchy` (chart-of-accounts tree and ancestor/descendant closure) |
+| `functions/` | Inline table-valued functions reused by procedures: `fn_CrewStatus`, `fn_AgeInYears`, `fn_FormatDisplayDate`, `fn_FiscalYtdRange`, `fn_ContainsPattern`, `fn_FinancialReport` |
+| `procedures/` | The 14 stored procedures used by the API, one `usp_*.sql` file each |
+| `seed/reference_data.sql` | Fiscal year types, nationalities, ranks, roles, chart of accounts |
+| `seed/sample_data.sql` | Ships, users, crew and service history, budgets, actual transactions |
+| `security/api_login.sql` | Execute-only login/user for the API (optional, parameterised) |
+| `deploy-order.txt` | Execution order (dependencies first), used by `deploy.ps1`, `deploy.sh` and the integration tests |
 
 Key decisions:
 

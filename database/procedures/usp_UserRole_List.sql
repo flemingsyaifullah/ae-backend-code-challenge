@@ -1,0 +1,14 @@
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_UserRole_List
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT RoleId, RoleName
+    FROM dbo.UserRole
+    ORDER BY RoleName;
+END;
+GO
