@@ -1,0 +1,42 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/database/deploy.sh"]
+    environment:
+      DB_SERVER: sqlserver,1433
+      DB_PASSWORD: ${MSSQL_SA_PASSWORD}
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?Set API_DB_PASSWORD in .env}
+      SQLCMD: /opt/mssql-tools18/bin/sqlcmd
+    volumes:
+      - ./database:/database:ro
+    restart: "no"
+
+  api:
+    build: .
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Database__ConnectionString: "Server=sqlserver,1433;Database=AeShipManagement;User Id=ae_api;Password=${API_DB_PASSWORD};TrustServerCertificate=true"
+      Authentication__ApiKeys__0: ${API_KEY:?Set API_KEY in .env}
+    ports:
+      - "8080:8080"
