@@ -1,0 +1,344 @@
+# AE Ship Management – Backend Code Challenge
+
+A ship management backend built with **SQL Server stored procedures** and an **ASP.NET Core (.NET 10) REST API**, covering users, ships, ship assignment, crew lists and fiscal-year-aware financial reports.
+
+The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
+
+- **Database:** SQL Server (tested on SQL Server 2019 Express LocalDB and SQL Server 2022), T-SQL only, compatible with Azure SQL Database
+- **API:** C# / ASP.NET Core 10 (LTS), Dapper calling stored procedures only
+- **Tests:** xUnit: 82 unit tests and 79 integration tests against a real SQL Server
+- **Extras:** API key authentication, OpenAPI + Swagger UI, structured logging, health check, Docker Compose, GitHub Actions CI
+
+---
+
+## Contents
+
+1. [Quick start](#quick-start)
+2. [Architecture](#architecture)
+3. [Database design](#database-design)
+4. [Business rules](#business-rules)
+5. [Stored procedures](#stored-procedures)
+6. [API](#api)
+7. [Error handling and validation](#error-handling-and-validation)
+8. [Testing](#testing)
+9. [Docker and CI](#docker-and-ci)
+10. [Scalability considerations](#scalability-considerations)
+11. [Open questions for the client](#open-questions-for-the-client)
+12. [Project structure](#project-structure)
+
+---
+
+## Quick start
+
+### Option A – Docker (SQL Server 2022 + API)
+
+```bash
+cp .env.example .env        # then set your own passwords and API key
+docker compose up --build
+```
+
+- Swagger UI: http://localhost:8080/swagger
+- Health: http://localhost:8080/health
+- Send the API key from `.env` in the `X-Api-Key` header (Swagger UI: **Authorize**).
+
+`db-init` creates the database, runs every script in `database/` and creates the execute-only `ae_api` login that the API uses.
+
+### Option B – Local SQL Server / LocalDB (Windows)
+
+Requirements: .NET SDK 10, SQL Server 2019+ (Express or LocalDB) and `sqlcmd`.
+
+```powershell
+sqllocaldb create AeChallenge 15.0 -s          # skip if you use another SQL Server instance
+./database/deploy.ps1                           # defaults to (localdb)\AeChallenge, Windows auth
+dotnet run --project src/AeShipManagement.Api
+```
+
+- `deploy.ps1 -Server localhost -User sa -Password <pwd>` targets another instance.
+- The launch profile runs in Development on http://localhost:5000 and opens Swagger UI at http://localhost:5000/swagger.
+- Development settings use `(localdb)\AeChallenge` and the API key `local-dev-api-key` (`appsettings.Development.json`, development only).
+
+### Running the tests
+
+```bash
+dotnet test tests/AeShipManagement.UnitTests
+dotnet test tests/AeShipManagement.IntegrationTests
+```
+
+Integration tests create a temporary database, deploy all scripts into it and drop it afterwards. They use `(localdb)\AeChallenge` by default; set `AE_TEST_SQL_CONNECTION` to a master-database connection string to use another server.
+
+---
+
+## Architecture
+
+A **modular monolith**: one REST API and one SQL Server database, split into layers with clear boundaries.
+
+```mermaid
+flowchart LR
+  Client[Client / Swagger UI] -->|HTTP + X-Api-Key| Api
+  subgraph Api[AeShipManagement.Api]
+    MW[Auth, exception handler, HTTP logging] --> C[Controllers]
+  end
+  C --> S
+  subgraph App[AeShipManagement.Application]
+    S[Services + FluentValidation]
+  end
+  S -->|repository interfaces| R
+  subgraph Infra[AeShipManagement.Infrastructure]
+    R[Repositories] --> X[StoredProcedureExecutor<br/>Dapper, CommandType.StoredProcedure]
+  end
+  X -->|EXEC dbo.usp_*| DB[(SQL Server<br/>procedures, functions, views, tables)]
+```
+
+| Layer | Responsibility |
+|---|---|
+| `Api` | HTTP concerns only: routing, status codes, API key authentication, ProblemDetails, OpenAPI, logging |
+| `Application` | Use cases, request/response models, input validation, repository interfaces. No SQL, no HTTP |
+| `Infrastructure` | Repository implementations. Every call goes through one `StoredProcedureExecutor` that always uses `CommandType.StoredProcedure` and translates SQL errors to application exceptions |
+| `database/` | Schema, functions, views, stored procedures and sample data: the single source of truth for business calculations |
+
+**Why not microservices?** The brief asks for REST APIs over one SQL Server database. Everything revolves around the ship (crew, finance, users), so splitting into services would add network hops, data duplication and operational cost with no benefit at this size. The feature folders (Users, Ships, Crew, FinancialReports) keep boundaries clear, so a module could be extracted later if load or team structure required it.
+
+**Stored-procedure-only access is enforced, not just followed.** The API connects as `ae_api`, a login that only has `EXECUTE` on schema `dbo` (`database/06_api_login.sql`). Direct `SELECT`/`UPDATE` on tables or views fails with error 229. This is covered by integration tests.
+
+Other choices:
+
+- **.NET 10 (LTS)**: .NET 8 support ended in November 2026. The brief does not mandate a version.
+- **Dapper** instead of an ORM: with stored procedures only, change tracking and LINQ add nothing. Dapper maps procedure results (including multiple result sets and output parameters) explicitly.
+- **Typed parameters**: strings are sent with the exact SQL type and length of the column (`varchar(10)`, `nvarchar(100)`, `char(4)`), avoiding implicit conversions that prevent index seeks.
+- **Central Package Management** (`Directory.Packages.props`) and `TreatWarningsAsErrors` for consistent builds.
+
+---
+
+## Database design
+
+ERD: [database/ERD.md](database/ERD.md) (Mermaid, rendered by GitHub).
+
+| Script | Content |
+|---|---|
+| `01_schema.sql` | Tables, primary/foreign keys, check constraints, indexes |
+| `02_functions_views.sql` | Inline table-valued functions and views reused by procedures |
+| `03_procedures.sql` | All stored procedures used by the API |
+| `04_seed_reference.sql` | Fiscal year types, nationalities, ranks, roles, chart of accounts |
+| `05_seed_sample.sql` | Ships, users, crew and service history, budgets, actual transactions |
+| `06_api_login.sql` | Execute-only login/user for the API (optional, parameterised) |
+
+Key decisions:
+
+| Decision | Reason |
+|---|---|
+| `FiscalYearType` table (`0112`, `0403`, …) with computed start/end month and a check constraint | No hard-coded fiscal years. A new fiscal year type is one row. The constraint rejects codes that are not 12 consecutive months (e.g. `0412`). |
+| Crew status is **derived** from dates, never stored | It changes every day without any data change, so a stored value would go stale. |
+| Rank stored per contract in `CrewServiceHistory` | A crew member can be promoted between contracts. |
+| `AccountPeriod` is a `DATE` on the first day of the month (`CHECK DAY() = 1`) | Fiscal-year ranges become index-friendly date ranges. The API accepts `yyyy-MM`. |
+| Money is `DECIMAL(18,2)` with `CHECK (value >= 0)` | Exact arithmetic. Negative budgets/actuals are rejected by the database. |
+| Budgets and actuals can only reference **child** accounts, enforced by a composite foreign key | `Account` has `UNIQUE (AccountNumber, AccountType)`. Budget/transaction rows carry a computed `AccountType = 'C'` and reference that pair. A parent reference must point to a `'P'` account the same way. No triggers needed. |
+| Surrogate `ShipId` with unique `ShipCode` | Codes can change without touching foreign keys. The API exposes the business code. |
+| Lookup tables for rank, nationality, role | Normalisation and consistent values. |
+| Filtered index on open contracts (`WHERE SignOffDate IS NULL`) | The crew list only reads contracts that are not signed off. |
+
+Sample data (all minimums in the brief are checked by an integration test):
+
+- 6 ships: 4 active and 2 inactive, fiscal years `0112` and `0403`
+- 20+ crew per ship (152 crew members, 179 contracts), 19 ranks, realistic handovers with overlapping service periods, previous contracts on other ships
+- Chart of accounts: 3 levels, 8 parent accounts with 5–7 children each
+- Budgets for 3 ships (one `0403`), January 2024 – December 2025, every child account
+- Actual transactions for the same 3 ships, January 2024 – October 2025, several rows per period, including zero-value rows and periods without rows
+- Crew dates are offsets from the day the script runs, so Onboard, Relief Due, Planned and Signed Off crew exist whenever the data is loaded. The README sample rows (`CREW001`, `CREW002`) keep their original fixed dates.
+- `SHIP01` accounts `7120000` and `7135000` reproduce the child rows of the example report for July 2025.
+
+---
+
+## Business rules
+
+### Crew status (as of today, or `@AsOfDate` in tests)
+
+| Condition | Status | In crew list |
+|---|---|---|
+| Sign Off Date is set | Signed Off | No |
+| Sign On Date is after today | Planned | No |
+| No Sign Off Date and today > End of Contract + 30 days | Relief Due | Yes |
+| Signed on, no Sign Off Date, otherwise | Onboard | Yes |
+
+The rules live in one place: `dbo.fn_CrewStatus`. See [open questions](#open-questions-for-the-client) for the window between End of Contract and End of Contract + 30 days.
+
+Age is computed in completed years (`dbo.fn_AgeInYears`). `DATEDIFF(YEAR)` alone over-counts before the birthday.
+
+### Financial reports
+
+- **YTD range:** `start month = first two digits of the fiscal year code`. If the selected month is before the start month, the fiscal year started in the previous calendar year. For example, `0403` + February 2025 gives April 2024 – February 2025, and `0112` + July 2025 gives January – July 2025.
+- **Child values** are the sum of all recorded rows. No rows means `NULL` (unknown, shown as `null`). A recorded zero stays `0`.
+- **Parent values** are the sum of all descendant child accounts at any depth, via a recursive closure view (`vw_AccountHierarchy`).
+- **Variance** = Actual − Budget. When only one side has a value, the missing side counts as zero. When both are missing, the variance is `NULL`.
+- Accounts whose monthly and YTD values are all zero or missing are not returned.
+- **Detail** returns every account level. **Summary** returns parent accounts only.
+- Reports and crew lists are only available for **active** ships (`422` for inactive ships).
+
+**Note on the example report in the brief:** its child rows are reproduced exactly by the sample data (`7120000` and `7135000`, July 2025). Some parent figures in the example do not add up (for example, 9600 − 9900 is shown as a YTD variance of 0), so the implementation follows the stated rules (parent = sum of children, variance = actual − budget) rather than those figures.
+
+---
+
+## Stored procedures
+
+| Procedure | Purpose |
+|---|---|
+| `usp_User_Create`, `usp_User_GetById`, `usp_User_List`, `usp_UserRole_List` | Users and roles |
+| `usp_Ship_Create`, `usp_Ship_GetByCode`, `usp_Ship_List` | Ships |
+| `usp_UserShip_Assign`, `usp_UserShip_Unassign`, `usp_UserShip_ListShipsByUser` | User ↔ ship assignment (many-to-many). Assign is idempotent. |
+| `usp_Crew_ListByShip` | Crew list with paging, sorting and searching |
+| `usp_FinancialReport_Detail`, `usp_FinancialReport_Summary` | Financial reports (shared implementation in `usp_FinancialReport_Get`) |
+
+**Crew list parameters:** `@PageNumber` (1-based), `@PageSize` (1–100), `@SortBy` (`RankName`, `CrewMemberId`, `FirstName`, `LastName`, `Age`, `Nationality`, `SignOnDate`, `Status`; default rank seniority), `@SortDirection` (`ASC`/`DESC`), `@SearchTerm`, and `@TotalCount OUTPUT`.
+
+**SQL injection safety:**
+
+- There is **no dynamic SQL**. Sorting uses a whitelist and static `CASE` expressions in `ORDER BY`.
+- Search input is always a parameter, and LIKE wildcards (`%`, `_`, `[`) are escaped (`fn_ContainsPattern`), so `%` means a literal percent sign.
+- Search covers every column except Status, including the displayed date (`dd Mon yyyy`, e.g. `05 Apr`) and the ISO date. The display format is built from a fixed month table, so it does not depend on the session language.
+
+**Error convention:** procedures raise `THROW 50400` (invalid input), `50404` (not found), `50409` (conflict) or `50422` (business rule), and the API maps them to HTTP status codes.
+
+---
+
+## API
+
+Base path `/api/v1`. All endpoints except `/health`, `/openapi/v1.json` and `/swagger` require the `X-Api-Key` header. OpenAPI document: [docs/openapi.json](docs/openapi.json).
+
+| Method | Endpoint | Success | Description |
+|---|---|---|---|
+| POST | `/users` | 201 + Location | Create a user (`fullName`, `email`, `roleName`) |
+| GET | `/users?pageNumber=&pageSize=` | 200 | List users (paged) |
+| GET | `/users/{userId}` | 200 | Get a user |
+| GET | `/user-roles` | 200 | Roles a user can have |
+| POST | `/ships` | 201 + Location | Create a ship (`shipCode`, `shipName`, `fiscalYearCode`, optional `status`) |
+| GET | `/ships?status=&pageNumber=&pageSize=` | 200 | List ships (paged, optional status filter) |
+| GET | `/ships/{shipCode}` | 200 | Get a ship |
+| PUT | `/users/{userId}/ships/{shipCode}` | 204 | Assign a ship to a user (idempotent) |
+| DELETE | `/users/{userId}/ships/{shipCode}` | 204 | Remove an assignment |
+| GET | `/users/{userId}/ships` | 200 | Ships assigned to a user |
+| GET | `/ships/{shipCode}/crew?pageNumber=&pageSize=&sortBy=&sortDirection=&search=` | 200 | Crew Onboard / Relief Due as of today |
+| GET | `/ships/{shipCode}/financial-reports/detail?period=yyyy-MM` | 200 | Detailed financial report |
+| GET | `/ships/{shipCode}/financial-reports/summary?period=yyyy-MM` | 200 | Summary financial report |
+| GET | `/health` | 200 | API and database health (no API key) |
+
+Example:
+
+```bash
+curl -H "X-Api-Key: local-dev-api-key" \
+  "http://localhost:5000/api/v1/ships/SHIP01/financial-reports/detail?period=2025-07"
+```
+
+```json
+{
+  "shipCode": "SHIP01",
+  "shipName": "Flying Dutchman",
+  "fiscalYearCode": "0112",
+  "reportType": "Detail",
+  "period": "2025-07",
+  "ytdFrom": "2025-01",
+  "ytdTo": "2025-07",
+  "rows": [
+    {
+      "accountNumber": "7120000",
+      "coaDescription": "AWARDS",
+      "accountType": "Child",
+      "level": 3,
+      "parentAccountNumber": "7100000",
+      "actual": null,
+      "budget": 1000.00,
+      "variance": -1000.00,
+      "ytdActual": 3200.00,
+      "ytdBudget": 3300.00,
+      "ytdVariance": -100.00
+    }
+  ]
+}
+```
+
+---
+
+## Error handling and validation
+
+Every error is an RFC 9457 `application/problem+json` response with a `traceId`:
+
+| Status | When |
+|---|---|
+| 400 | Validation failed (field errors per property), malformed JSON, invalid paging/sorting, unknown fiscal year code or role |
+| 401 | Missing or invalid API key |
+| 404 | User, ship or assignment not found |
+| 409 | Duplicate ship code or e-mail (case-insensitive), including unique-index races |
+| 422 | Business rule: crew list or report requested for an inactive ship |
+| 500 | Unexpected error. Generic message only; details are logged, never returned. |
+
+Validation happens twice on purpose:
+
+- **FluentValidation in the API** gives clear field-level messages and enforces column lengths. Without this, a 15-character ship code would be silently truncated to `varchar(10)`.
+- **The procedures validate again**, because they are the system's contract and can be called by other clients.
+
+Logging uses `ILogger` with structured properties: HTTP method/path/status/duration, created users and ships, assignments, rejected API keys, and unhandled exceptions.
+
+---
+
+## Testing
+
+| Project | Count | What it covers |
+|---|---|---|
+| `AeShipManagement.UnitTests` | 82 | Validators, services (NSubstitute fakes), SQL error translation, exception-to-HTTP mapping, and the full HTTP pipeline in memory via `WebApplicationFactory` (authentication, status codes, ProblemDetails, null vs zero in JSON) |
+| `AeShipManagement.IntegrationTests` | 79 | Deploys the real scripts to a temporary SQL Server database. Covers crew status at every date boundary, age around birthdays and 29 February, search (partial dates, wildcards, injection strings), paging, sorting every column in both directions, YTD for `0112` and `0403`, parent roll-ups, NULL vs 0, summary vs detail, constraint enforcement, execute-only permissions, sample-data minimums, and end-to-end HTTP flows |
+
+---
+
+## Docker and CI
+
+- `Dockerfile`: multi-stage build, runs as the non-root `app` user.
+- `docker-compose.yml`: `sqlserver` (2022, health-checked) → `db-init` (runs `database/deploy.sh`) → `api`. The API connects with the execute-only `ae_api` login. Secrets come from `.env` (template: `.env.example`).
+- `.github/workflows/ci.yml`:
+  - restore, build (warnings as errors), unit tests, integration tests against a SQL Server 2022 service container;
+  - then `docker compose up` with a smoke test (health, crew list, report, 401 without key).
+
+---
+
+## Scalability considerations
+
+- **Stateless API:** scale horizontally behind a load balancer. Connection pooling is provided by SqlClient.
+- **Bounded responses:** every list is paged (max 100 rows), and `@TotalCount` comes from the same procedure call.
+- **Indexes match access paths:** `(ShipId, AccountPeriod)` with included columns for reports, and a filtered index for open crew contracts.
+- **Async I/O and cancellation tokens** throughout, so aborted requests stop their SQL commands.
+- If financial data grows large: a monthly summary table or indexed view per ship/account, partitioning by period, and caching reports for closed periods.
+- Read-heavy reporting could move to a readable secondary (Azure SQL read scale-out) without code changes beyond the connection string.
+- The API is versioned in the URL (`/api/v1`).
+
+---
+
+## Open questions for the client
+
+The brief leaves some behaviour open. These are the current choices. Each is isolated in one place so it can change quickly once confirmed.
+
+| # | Question | Current behaviour | Where |
+|---|---|---|---|
+| 1 | Crew with no Sign Off Date whose End of Contract passed **1–30 days** ago | Onboard | `fn_CrewStatus` |
+| 2 | Sign Off Date set but in the future | Signed Off (excluded), following "If the Sign Off Date is set…" literally | `fn_CrewStatus` |
+| 3 | Several budget rows for the same ship/account/period (sample shows 0 and 1000) | Summed | `fn_FinancialReport` |
+| 4 | Variance when only one side has data | Missing side counts as 0; both missing → NULL | `fn_FinancialReport` |
+| 5 | "Only include records where budget or actual values are non-zero" | Row shown when any monthly or YTD value is non-zero | `fn_FinancialReport` |
+| 6 | Content of the summary report | Parent accounts only | `usp_FinancialReport_Get` |
+| 7 | Inactive ship in crew list / report | 422 with an explanatory message | crew and report procedures |
+| 8 | Search: one keyword across columns or per-column filters | One keyword across all columns except Status | `usp_Crew_ListByShip` |
+
+---
+
+## Project structure
+
+```
+├── CHALLENGE.md                         original brief
+├── database/                            T-SQL scripts, ERD, deploy scripts
+├── docs/openapi.json                    exported OpenAPI 3.1 document
+├── src/
+│   ├── AeShipManagement.Api/            controllers, auth, error handling, OpenAPI
+│   ├── AeShipManagement.Application/    models, validators, services, repository interfaces
+│   └── AeShipManagement.Infrastructure/ Dapper repositories, stored procedure executor
+├── tests/
+│   ├── AeShipManagement.UnitTests/
+│   └── AeShipManagement.IntegrationTests/
+├── Dockerfile, docker-compose.yml, .env.example
+└── .github/workflows/ci.yml
+```
