@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CI_SA_PASSWORD: Ci_Only_Passw0rd!
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: Express
+          MSSQL_SA_PASSWORD: Ci_Only_Passw0rd!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Ci_Only_Passw0rd!' -C -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 20s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Unit tests
+        run: dotnet test tests/AeShipManagement.UnitTests --configuration Release --no-build --logger trx --results-directory TestResults
+
+      - name: Integration tests (SQL Server 2022)
+        env:
+          AE_TEST_SQL_CONNECTION: Server=localhost,1433;Database=master;User Id=sa;Password=${{ env.CI_SA_PASSWORD }};TrustServerCertificate=true
+        run: dotnet test tests/AeShipManagement.IntegrationTests --configuration Release --no-build --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+
+  docker-compose:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env
+        run: |
+          echo "MSSQL_SA_PASSWORD=${CI_SA_PASSWORD}" >> .env
+          echo "API_DB_PASSWORD=Ci_Api_Passw0rd!" >> .env
+          echo "API_KEY=ci-api-key" >> .env
+
+      - name: Start stack
+        run: docker compose up --build --detach --wait api
+
+      - name: Smoke test
+        run: |
+          curl --fail --silent --retry 20 --retry-delay 3 --retry-all-errors http://localhost:8080/health
+          curl --fail --silent -H "X-Api-Key: ci-api-key" "http://localhost:8080/api/v1/ships/SHIP01/crew?pageSize=5"
+          curl --fail --silent -H "X-Api-Key: ci-api-key" "http://localhost:8080/api/v1/ships/SHIP01/financial-reports/summary?period=2025-07"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/api/v1/ships)" = "401"
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down --volumes
