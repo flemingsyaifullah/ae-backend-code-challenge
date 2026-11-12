@@ -7,7 +7,7 @@ public sealed partial class DatabaseFixture : IAsyncLifetime
 {
     public const string MasterConnectionVariable = "AE_TEST_SQL_CONNECTION";
     private const string DefaultMasterConnection =
-        @"Server=(localdb)\AeChallenge;Database=master;Integrated Security=true;TrustServerCertificate=true";
+        @"Server=localhost\SQLEXPRESS;Database=master;Integrated Security=true;TrustServerCertificate=true";
 
     private static readonly string[] Scripts =
         ["01_schema.sql", "02_functions_views.sql", "03_procedures.sql", "04_seed_reference.sql", "05_seed_sample.sql"];

@@ -4,7 +4,7 @@ A ship management backend built with **SQL Server stored procedures** and an **A
 
 The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
 
-- **Database:** SQL Server (tested on SQL Server 2019 Express LocalDB and SQL Server 2022), T-SQL only, compatible with Azure SQL Database
+- **Database:** SQL Server (tested on SQL Server 2022 Express), T-SQL only, compatible with Azure SQL Database
 - **API:** C# / ASP.NET Core 10 (LTS), Dapper calling stored procedures only
 - **Tests:** xUnit: 82 unit tests and 79 integration tests against a real SQL Server
 - **Extras:** API key authentication, OpenAPI + Swagger UI, structured logging, health check, Docker Compose, GitHub Actions workflow
@@ -43,19 +43,18 @@ docker compose up --build
 
 `db-init` creates the database, runs every script in `database/` and creates the execute-only `ae_api` login that the API uses.
 
-### Option B – Local SQL Server / LocalDB (Windows)
+### Option B – Local SQL Server Express (Windows)
 
-Requirements: .NET SDK 10, SQL Server 2019+ (Express or LocalDB) and `sqlcmd`.
+Requirements: .NET SDK 10, SQL Server 2019+ (Express is enough) and `sqlcmd`.
 
 ```powershell
-sqllocaldb create AeChallenge 15.0 -s          # skip if you use another SQL Server instance
-./database/deploy.ps1                           # defaults to (localdb)\AeChallenge, Windows auth
+./database/deploy.ps1                           # defaults to localhost\SQLEXPRESS, Windows auth
 dotnet run --project src/AeShipManagement.Api
 ```
 
-- `deploy.ps1 -Server localhost -User sa -Password <pwd>` targets another instance.
+- `deploy.ps1 -Server <instance> -User sa -Password <pwd>` targets another instance or SQL authentication.
 - The launch profile runs in Development on http://localhost:5000 and opens Swagger UI at http://localhost:5000/swagger.
-- Development settings use `(localdb)\AeChallenge` and the API key `local-dev-api-key` (`appsettings.Development.json`, development only).
+- Development settings use `localhost\SQLEXPRESS` (Windows authentication) and the API key `local-dev-api-key` (`appsettings.Development.json`, development only).
 
 ### Running the tests
 
@@ -64,7 +63,7 @@ dotnet test tests/AeShipManagement.UnitTests
 dotnet test tests/AeShipManagement.IntegrationTests
 ```
 
-Integration tests create a temporary database, deploy all scripts into it and drop it afterwards. They use `(localdb)\AeChallenge` by default; set `AE_TEST_SQL_CONNECTION` to a master-database connection string to use another server.
+Integration tests create a temporary database, deploy all scripts into it and drop it afterwards. They use `localhost\SQLEXPRESS` by default; set `AE_TEST_SQL_CONNECTION` to a master-database connection string to use another server.
 
 ---
 

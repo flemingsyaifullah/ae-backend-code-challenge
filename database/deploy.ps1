@@ -1,5 +1,5 @@
 param(
-    [string]$Server = "(localdb)\AeChallenge",
+    [string]$Server = "localhost\SQLEXPRESS",
     [string]$Database = "AeShipManagement",
     [string]$User,
     [string]$Password,
