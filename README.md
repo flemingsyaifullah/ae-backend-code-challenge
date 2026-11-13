@@ -357,6 +357,45 @@ Logging uses `ILogger` with structured properties: HTTP method/path/status/durat
 | `AeShipManagement.UnitTests` | 82 | Validators, services (NSubstitute fakes), SQL error translation, exception-to-HTTP mapping, and the full HTTP pipeline in memory via `WebApplicationFactory` (authentication, status codes, ProblemDetails, null vs zero in JSON) |
 | `AeShipManagement.IntegrationTests` | 79 | Deploys the real scripts to a temporary SQL Server database. Covers crew status at every date boundary, age around birthdays and 29 February, search (partial dates, wildcards, injection strings), paging, sorting every column in both directions, YTD for `0112` and `0403`, parent roll-ups, NULL vs 0, summary vs detail, constraint enforcement, execute-only permissions, sample-data minimums, and end-to-end HTTP flows |
 
+### Key tests
+
+A short path through the suite: the ten tests that best show the business rules, the edge cases and the security checks.
+
+| Test | Type | What it proves |
+|---|---|---|
+| [`Status_rules_are_applied_at_each_date_boundary`](tests/AeShipManagement.IntegrationTests/CrewListProcedureTests.cs#L44) | Integration | Onboard at End of Contract and at + 30 days, Relief Due at + 31 days, Onboard on the sign-on day |
+| [`Age_is_counted_in_completed_years`](tests/AeShipManagement.IntegrationTests/CrewListProcedureTests.cs#L67) | Integration | Age changes on the birthday, not before, including a 29 February birth date |
+| [`Search_treats_input_as_literal_text`](tests/AeShipManagement.IntegrationTests/CrewListProcedureTests.cs#L112) | Integration | `%`, `_`, `[A-Z]` and an injection string find nothing and change nothing |
+| [`Child_rows_match_the_example_in_the_brief`](tests/AeShipManagement.IntegrationTests/FinancialReportProcedureTests.cs#L12) | Integration | AWARDS and SCHOLARSHIPS for July 2025 match the brief, including the `null` actual |
+| [`Ytd_range_follows_the_ship_fiscal_year`](tests/AeShipManagement.IntegrationTests/FinancialReportProcedureTests.cs#L72) | Integration | YTD start for `0112` and `0403`, including January, March, April and December |
+| [`Recorded_zero_and_missing_value_stay_distinct`](tests/AeShipManagement.IntegrationTests/FinancialReportProcedureTests.cs#L95) | Integration | No transactions stays `NULL`, a recorded zero stays `0` |
+| [`Execute_only_user_cannot_touch_tables_or_views_directly`](tests/AeShipManagement.IntegrationTests/ExecuteOnlyPermissionTests.cs#L41) | Integration | A login with EXECUTE only gets error 229 on direct SELECT or UPDATE |
+| [`Crew_sort_rejects_unknown_columns`](tests/AeShipManagement.UnitTests/Validation/CrewAndReportValidatorTests.cs#L27) | Unit | Sort columns are whitelisted; `RankName; DROP TABLE dbo.Ship` is rejected |
+| [`Invalid_crew_query_never_reaches_the_database`](tests/AeShipManagement.UnitTests/Services/ServiceTests.cs#L46) | Unit | Invalid input stops in the service; the repository is never called |
+| [`Unexpected_failure_returns_500_without_internal_details`](tests/AeShipManagement.UnitTests/Api/ApiPipelineTests.cs#L180) | Unit | An unexpected error returns 500 without leaking its message |
+
+Run only these ten (24 cases, since some are theories) from the repository root:
+
+```bash
+dotnet test --filter "FullyQualifiedName~Status_rules_are_applied_at_each_date_boundary|FullyQualifiedName~Age_is_counted_in_completed_years|FullyQualifiedName~Search_treats_input_as_literal_text|FullyQualifiedName~Child_rows_match_the_example_in_the_brief|FullyQualifiedName~Ytd_range_follows_the_ship_fiscal_year|FullyQualifiedName~Recorded_zero_and_missing_value_stay_distinct|FullyQualifiedName~Execute_only_user_cannot_touch_tables_or_views_directly|FullyQualifiedName~Crew_sort_rejects_unknown_columns|FullyQualifiedName~Invalid_crew_query_never_reaches_the_database|FullyQualifiedName~Unexpected_failure_returns_500_without_internal_details"
+```
+
+Other useful filters:
+
+```bash
+dotnet test --filter "FullyQualifiedName~CrewListProcedureTests"
+dotnet test --filter "Category=Integration"
+```
+
+Integration tests need a SQL Server. With only Docker available, start the database container and point the tests at it (use the `MSSQL_SA_PASSWORD` from `.env`):
+
+```bash
+docker compose up -d sqlserver
+AE_TEST_SQL_CONNECTION="Server=localhost,1433;Database=master;User Id=sa;Password=<MSSQL_SA_PASSWORD>;TrustServerCertificate=true" dotnet test tests/AeShipManagement.IntegrationTests
+```
+
+In PowerShell, set it with `$env:AE_TEST_SQL_CONNECTION = "..."` before `dotnet test`.
+
 ---
 
 ## Docker and CI
