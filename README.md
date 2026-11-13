@@ -84,6 +84,8 @@ A short checklist to confirm the main features against the sample data. Every ch
 
 **Swagger UI:** click **Authorize** (top right), paste the API key into **Value**, click **Authorize**, then **Close**. For each check, expand the endpoint, click **Try it out**, fill in the parameters and click **Execute**.
 
+![Swagger UI: the Authorize button (top right) and every endpoint, grouped by Crew, Financial reports, Ships and Users](docs/images/swagger-ui.png)
+
 **curl** (bash: Linux, macOS, Git Bash or WSL): set the address and key once, then run the commands below.
 
 ```bash
@@ -446,7 +448,9 @@ The database is listed file by file because the stored procedures hold the busin
 │   ├── deploy-order.txt                         script order, used by the deploy scripts and the tests
 │   ├── deploy.ps1, deploy.sh                    deploy all scripts (Windows; Linux and Docker)
 │   └── ERD.md                                   entity relationship diagram (Mermaid)
-├── docs/openapi.json                            exported OpenAPI 3.1 document
+├── docs/
+│   ├── openapi.json                             exported OpenAPI 3.1 document
+│   └── images/swagger-ui.png                    Swagger UI screenshot used in this README
 ├── src/
 │   ├── AeShipManagement.Api/
 │   │   ├── Controllers/           UsersController, UserRolesController, ShipsController,
