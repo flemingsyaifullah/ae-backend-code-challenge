@@ -33,13 +33,13 @@ The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
 ### Option A – Docker (SQL Server 2022 + API)
 
 ```bash
-cp .env.example .env        # then set your own passwords and API key
+cp .env.example .env        # the defaults work for a local test; change them for a real deployment
 docker compose up --build
 ```
 
 - Swagger UI: http://localhost:8080/swagger
 - Health: http://localhost:8080/health
-- API key: **`change-me-api-key`** (the `API_KEY` value in `.env`). In Swagger UI click **Authorize** and paste it.
+- API key: **`local-dev-api-key`** (the `API_KEY` value in `.env`, the same key as a local run). In Swagger UI click **Authorize** and paste it.
 
 `db-init` creates the database, runs every script in `database/` and creates the execute-only `ae_api` login that the API uses.
 
@@ -73,14 +73,14 @@ Integration tests create a temporary database, deploy all scripts into it and dr
 A short checklist to confirm the main features against the sample data. Every check can be run in **Swagger UI** (no tools needed) or with **curl** (command line).
 
 > ### 🔑 API key
-> **Docker: `change-me-api-key`** &nbsp;·&nbsp; **Local run: `local-dev-api-key`**
+> **`local-dev-api-key`** (the same key for Docker and a local run)
 
 **Addresses**
 
-| Run | Swagger UI | API key |
-|---|---|---|
-| Docker | http://localhost:8080/swagger | **`change-me-api-key`** (the `API_KEY` value in `.env`, as in `.env.example`) |
-| Local (`dotnet run`) | http://localhost:5000/swagger | **`local-dev-api-key`** |
+| Run | Swagger UI |
+|---|---|
+| Docker | http://localhost:8080/swagger |
+| Local (`dotnet run`) | http://localhost:5000/swagger |
 
 **Swagger UI:** click **Authorize** (top right), paste the API key into **Value**, click **Authorize**, then **Close**. For each check, expand the endpoint, click **Try it out**, fill in the parameters and click **Execute**.
 
@@ -90,7 +90,7 @@ A short checklist to confirm the main features against the sample data. Every ch
 
 ```bash
 BASE=http://localhost:8080/api/v1    # local run: http://localhost:5000/api/v1
-KEY=change-me-api-key                # local run: local-dev-api-key
+KEY=local-dev-api-key                # same key for Docker and a local run
 ```
 
 The health check needs no key: http://localhost:8080/health (or `curl -s http://localhost:8080/health`) returns `Healthy`.
