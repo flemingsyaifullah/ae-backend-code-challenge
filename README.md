@@ -14,17 +14,18 @@ The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
 ## Contents
 
 1. [Quick start](#quick-start)
-2. [Architecture](#architecture)
-3. [Database design](#database-design)
-4. [Business rules](#business-rules)
-5. [Stored procedures](#stored-procedures)
-6. [API](#api)
-7. [Error handling and validation](#error-handling-and-validation)
-8. [Testing](#testing)
-9. [Docker and CI](#docker-and-ci)
-10. [Scalability considerations](#scalability-considerations)
-11. [Open questions for the client](#open-questions-for-the-client)
-12. [Project structure](#project-structure)
+2. [How to verify](#how-to-verify)
+3. [Architecture](#architecture)
+4. [Database design](#database-design)
+5. [Business rules](#business-rules)
+6. [Stored procedures](#stored-procedures)
+7. [API](#api)
+8. [Error handling and validation](#error-handling-and-validation)
+9. [Testing](#testing)
+10. [Docker and CI](#docker-and-ci)
+11. [Scalability considerations](#scalability-considerations)
+12. [Open questions for the client](#open-questions-for-the-client)
+13. [Project structure](#project-structure)
 
 ---
 
@@ -64,6 +65,73 @@ dotnet test tests/AeShipManagement.IntegrationTests
 ```
 
 Integration tests create a temporary database, deploy all scripts into it and drop it afterwards. They use `localhost\SQLEXPRESS` by default; set `AE_TEST_SQL_CONNECTION` to a master-database connection string to use another server.
+
+---
+
+## How to verify
+
+A short checklist to confirm the main features against the sample data, using Swagger UI (**Authorize** with the API key) or `curl`.
+
+```bash
+BASE=http://localhost:8080/api/v1    # Docker; local run: http://localhost:5000/api/v1
+KEY=change-me-api-key                # API_KEY from .env; local run: local-dev-api-key
+```
+
+### Crew list
+
+Crew dates are generated relative to the day the database is deployed, so the counts below hold on that day. `CREW001` and `CREW002` keep the fixed dates from the brief.
+
+| # | Request | Expected |
+|---|---|---|
+| 1 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew"` | `totalCount` 22 (19 Onboard + 3 Relief Due). First rows by rank seniority: Master `CREW001` Soka Philip (Relief Due), Chief Engineer `CREW002` Masteros Philip (Relief Due), Chief Officer `CREW003` John Masterbear (Onboard) |
+| 2 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew?search=05%20Apr"` | Exactly one item: `CREW001`, `signOnDateDisplay` "05 Apr 2025" |
+| 3 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew?sortBy=age&sortDirection=desc&pageSize=5"` | 5 items, ages in descending order, `totalPages` 5 |
+| 4 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew?search=_"` | No items: `%` and `_` are searched as literal text |
+| 5 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP05/crew"` | `422`: SHIP05 is inactive |
+
+### Financial reports
+
+| # | Request | Expected |
+|---|---|---|
+| 6 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/financial-reports/detail?period=2025-07"` | `ytdFrom` 2025-01, `ytdTo` 2025-07, rows below |
+| 7 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP02/financial-reports/detail?period=2025-02"` | `ytdFrom` 2024-04: SHIP02 uses the April–March fiscal year |
+| 8 | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/financial-reports/summary?period=2025-07"` | 6 rows, all `"accountType": "Parent"` |
+
+Selected rows of request 6 (SHIP01, July 2025):
+
+| Account | Month actual | Month budget | Variance | YTD actual | YTD budget | YTD variance | What it shows |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 7000000 OPERATING EXPENSES | 122,100 | 167,450 | −45,350 | 1,200,450 | 1,266,250 | −65,800 | Root = sum of all children |
+| 7100000 AWARD AND GRANT TO INDIVIDUALS | 2,300 | 3,200 | −900 | 9,600 | 9,600 | 0 | Parent of the two accounts in the brief |
+| 7120000 AWARDS | `null` | 1,000 | −1,000 | 3,200 | 3,300 | −100 | Example in the brief: no transactions → `null`, not 0 |
+| 7135000 SCHOLARSHIPS | 2,300 | 2,200 | 100 | 6,400 | 6,300 | 100 | Example in the brief |
+| 7540000 DRY DOCKING | `null` | 0 | 0 | 184,000 | 180,000 | 4,000 | Budget recorded as 0 stays 0; shown because YTD is non-zero |
+
+The same numbers can be checked against the raw tables in SSMS or any SQL client:
+
+```sql
+-- SHIP01 July 2025 actual of the root account: 122100
+SELECT SUM(t.ActualValue) FROM dbo.AccountTransaction t JOIN dbo.Ship s ON s.ShipId = t.ShipId
+WHERE s.ShipCode = 'SHIP01' AND t.AccountPeriod = '2025-07-01';
+
+-- SHIP02 YTD actual for February 2025 (April 2024 – February 2025): 1825650
+SELECT SUM(t.ActualValue) FROM dbo.AccountTransaction t JOIN dbo.Ship s ON s.ShipId = t.ShipId
+WHERE s.ShipCode = 'SHIP02' AND t.AccountPeriod BETWEEN '2024-04-01' AND '2025-02-01';
+```
+
+### Users, ships and errors
+
+| # | Request | Expected |
+|---|---|---|
+| 9 | `curl -s -i -H "X-Api-Key: $KEY" -H "Content-Type: application/json" -d '{"fullName":"Test User","email":"test.user@example.com","roleName":"Superintendent"}' "$BASE/users"` | `201` with a `Location` header and the new `userId` |
+| 10 | `curl -s -i -X PUT -H "X-Api-Key: $KEY" "$BASE/users/{userId}/ships/SHIP01"` | `204`; repeating it is also `204` |
+| 11 | `curl -s -H "X-Api-Key: $KEY" "$BASE/users/{userId}/ships"` | `[{ "shipCode": "SHIP01", ... }]` |
+| 12 | Request 9 again | `409`: the email already exists |
+| 13 | `curl -s -i "$BASE/ships"` | `401`: no API key |
+| 14 | `curl -s -i -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/financial-reports/detail?period=2025-13"` | `400` with an error for `period` |
+| 15 | `curl -s -i -H "X-Api-Key: $KEY" "$BASE/ships/NOPE/crew"` | `404` |
+
+All errors are returned as `application/problem+json` with a `traceId`.
 
 ---
 
