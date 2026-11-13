@@ -70,42 +70,50 @@ Integration tests create a temporary database, deploy all scripts into it and dr
 
 ## How to verify
 
-A short checklist to confirm the main features against the sample data, using **Swagger UI** only.
+A short checklist to confirm the main features against the sample data. Every check can be run in **Swagger UI** (no tools needed) or with **curl** (command line).
 
-**1. Open Swagger UI and note the API key**
+> ### 🔑 API key
+> **Docker: `change-me-api-key`** &nbsp;·&nbsp; **Local run: `local-dev-api-key`**
+
+**Addresses**
 
 | Run | Swagger UI | API key |
 |---|---|---|
 | Docker | http://localhost:8080/swagger | **`change-me-api-key`** (the `API_KEY` value in `.env`, as in `.env.example`) |
 | Local (`dotnet run`) | http://localhost:5000/swagger | **`local-dev-api-key`** |
 
-**2. Click Authorize** (top right), paste the API key into **Value**, click **Authorize**, then **Close**.
+**Swagger UI:** click **Authorize** (top right), paste the API key into **Value**, click **Authorize**, then **Close**. For each check, expand the endpoint, click **Try it out**, fill in the parameters and click **Execute**.
 
-**3. Run each check:** expand the endpoint, click **Try it out**, fill in the parameters, click **Execute**, and compare the response with the expected result.
+**curl** (bash: Linux, macOS, Git Bash or WSL): set the address and key once, then run the commands below.
 
-The health check needs no key: open `/health` (for example http://localhost:8080/health), which returns `Healthy`.
+```bash
+BASE=http://localhost:8080/api/v1    # local run: http://localhost:5000/api/v1
+KEY=change-me-api-key                # local run: local-dev-api-key
+```
+
+The health check needs no key: http://localhost:8080/health (or `curl -s http://localhost:8080/health`) returns `Healthy`.
 
 ### Crew list: `GET /api/v1/ships/{shipCode}/crew`
 
 Crew dates are generated relative to the day the database is deployed, so the counts below hold on that day. `CREW001` and `CREW002` keep the fixed dates from the brief.
 
-| # | Parameters | Expected |
+| Swagger UI | curl | Expected |
 |---|---|---|
-| 1 | shipCode `SHIP01` | `totalCount` 22 (19 Onboard + 3 Relief Due). First rows by rank seniority: Master `CREW001` Soka Philip (Relief Due), Chief Engineer `CREW002` Masteros Philip (Relief Due), Chief Officer `CREW003` John Masterbear (Onboard) |
-| 2 | shipCode `SHIP01`, search `05 Apr` | Exactly one item: `CREW001`, `signOnDateDisplay` "05 Apr 2025" |
-| 3 | shipCode `SHIP01`, sortBy `age`, sortDirection `desc`, pageSize `5` | 5 items, ages in descending order, `totalPages` 5 |
-| 4 | shipCode `SHIP01`, search `_` | No items: `%` and `_` are searched as literal text |
-| 5 | shipCode `SHIP05` | `422`: SHIP05 is inactive |
-| 6 | shipCode `NOPE` | `404`: the ship does not exist |
+| **1.** shipCode `SHIP01` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew"` | `totalCount` 22 (19 Onboard + 3 Relief Due). First rows by rank seniority: Master `CREW001` Soka Philip (Relief Due), Chief Engineer `CREW002` Masteros Philip (Relief Due), Chief Officer `CREW003` John Masterbear (Onboard) |
+| **2.** shipCode `SHIP01`, search `05 Apr` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew?search=05%20Apr"` | Exactly one item: `CREW001`, `signOnDateDisplay` "05 Apr 2025" |
+| **3.** shipCode `SHIP01`, sortBy `age`, sortDirection `desc`, pageSize `5` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew?sortBy=age&sortDirection=desc&pageSize=5"` | 5 items, ages in descending order, `totalPages` 5 |
+| **4.** shipCode `SHIP01`, search `_` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/crew?search=_"` | No items: `%` and `_` are searched as literal text |
+| **5.** shipCode `SHIP05` | `curl -s -i -H "X-Api-Key: $KEY" "$BASE/ships/SHIP05/crew"` | `422`: SHIP05 is inactive |
+| **6.** shipCode `NOPE` | `curl -s -i -H "X-Api-Key: $KEY" "$BASE/ships/NOPE/crew"` | `404`: the ship does not exist |
 
-### Financial reports
+### Financial reports: `GET /api/v1/ships/{shipCode}/financial-reports/…`
 
-| # | Endpoint | Parameters | Expected |
-|---|---|---|---|
-| 7 | `GET /api/v1/ships/{shipCode}/financial-reports/detail` | shipCode `SHIP01`, period `2025-07` | `ytdFrom` 2025-01, `ytdTo` 2025-07, rows below |
-| 8 | `GET /api/v1/ships/{shipCode}/financial-reports/detail` | shipCode `SHIP02`, period `2025-02` | `ytdFrom` 2024-04: SHIP02 uses the April–March fiscal year |
-| 9 | `GET /api/v1/ships/{shipCode}/financial-reports/summary` | shipCode `SHIP01`, period `2025-07` | 6 rows, all `"accountType": "Parent"` |
-| 10 | `GET /api/v1/ships/{shipCode}/financial-reports/detail` | shipCode `SHIP01`, period `2025-13` | `400` with an error for `period` |
+| Swagger UI | curl | Expected |
+|---|---|---|
+| **7.** `…/financial-reports/detail`: shipCode `SHIP01`, period `2025-07` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/financial-reports/detail?period=2025-07"` | `ytdFrom` 2025-01, `ytdTo` 2025-07, rows below |
+| **8.** `…/financial-reports/detail`: shipCode `SHIP02`, period `2025-02` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP02/financial-reports/detail?period=2025-02"` | `ytdFrom` 2024-04: SHIP02 uses the April–March fiscal year |
+| **9.** `…/financial-reports/summary`: shipCode `SHIP01`, period `2025-07` | `curl -s -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/financial-reports/summary?period=2025-07"` | 6 rows, all `"accountType": "Parent"` |
+| **10.** `…/financial-reports/detail`: shipCode `SHIP01`, period `2025-13` | `curl -s -i -H "X-Api-Key: $KEY" "$BASE/ships/SHIP01/financial-reports/detail?period=2025-13"` | `400` with an error for `period` |
 
 Selected rows of check 7 (SHIP01, July 2025):
 
@@ -131,13 +139,13 @@ WHERE s.ShipCode = 'SHIP02' AND t.AccountPeriod BETWEEN '2024-04-01' AND '2025-0
 
 ### Users and ship assignment
 
-| # | Endpoint | Parameters | Expected |
-|---|---|---|---|
-| 11 | `POST /api/v1/users` | Request body `{ "fullName": "Test User", "email": "test.user@example.com", "roleName": "Superintendent" }` | `201`; note the `userId` in the response |
-| 12 | `PUT /api/v1/users/{userId}/ships/{shipCode}` | userId from check 11, shipCode `SHIP01` | `204`; executing it again is also `204` |
-| 13 | `GET /api/v1/users/{userId}/ships` | userId from check 11 | One ship: `SHIP01` |
-| 14 | `POST /api/v1/users` | Same body as check 11 | `409`: the email already exists |
-| 15 | `GET /api/v1/ships` after **Authorize → Logout** | none | `401`: no API key |
+| Swagger UI | curl | Expected |
+|---|---|---|
+| **11.** `POST /api/v1/users`, request body `{"fullName":"Test User","email":"test.user@example.com","roleName":"Superintendent"}` | `curl -s -i -H "X-Api-Key: $KEY" -H "Content-Type: application/json" -d '{"fullName":"Test User","email":"test.user@example.com","roleName":"Superintendent"}' "$BASE/users"` | `201`; note the `userId` in the response |
+| **12.** `PUT /api/v1/users/{userId}/ships/{shipCode}`: userId from check 11, shipCode `SHIP01` | `curl -s -i -X PUT -H "X-Api-Key: $KEY" "$BASE/users/{userId}/ships/SHIP01"` | `204`; running it again is also `204` |
+| **13.** `GET /api/v1/users/{userId}/ships`: userId from check 11 | `curl -s -H "X-Api-Key: $KEY" "$BASE/users/{userId}/ships"` | One ship: `SHIP01` |
+| **14.** `POST /api/v1/users` with the same body as check 11 | Same command as check 11 | `409`: the email already exists |
+| **15.** `GET /api/v1/ships` after **Authorize → Logout** | `curl -s -i "$BASE/ships"` | `401`: no API key |
 
 All errors are returned as `application/problem+json` with a `traceId`.
 
