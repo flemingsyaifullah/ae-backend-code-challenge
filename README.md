@@ -24,8 +24,6 @@ The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
 9. [Testing](#testing)
 10. [Docker and CI](#docker-and-ci)
 11. [Scalability considerations](#scalability-considerations)
-12. [Open questions for the client](#open-questions-for-the-client)
-13. [Project structure](#project-structure)
 
 ---
 
@@ -163,16 +161,9 @@ flowchart LR
 | `Infrastructure` | Repository implementations. Every call goes through one `StoredProcedureExecutor` that always uses `CommandType.StoredProcedure` and translates SQL errors to application exceptions |
 | `database/` | Schema, functions, views, stored procedures and sample data: the single source of truth for business calculations |
 
-**Why not microservices?** The brief asks for REST APIs over one SQL Server database. Everything revolves around the ship (crew, finance, users), so splitting into services would add network hops, data duplication and operational cost with no benefit at this size. The feature folders (Users, Ships, Crew, FinancialReports) keep boundaries clear, so a module could be extracted later if load or team structure required it.
-
 **Stored-procedure-only access is enforced, not just followed.** The API connects as `ae_api`, a login that only has `EXECUTE` on schema `dbo` (`database/security/api_login.sql`). Direct `SELECT`/`UPDATE` on tables or views fails with error 229. This is covered by integration tests.
 
-Other choices:
-
-- **.NET 10 (LTS)**: .NET 8 support ended in November 2026. The brief does not mandate a version.
-- **Dapper** instead of an ORM: with stored procedures only, change tracking and LINQ add nothing. Dapper maps procedure results (including multiple result sets and output parameters) explicitly.
-- **Typed parameters**: strings are sent with the exact SQL type and length of the column (`varchar(10)`, `nvarchar(100)`, `char(4)`), avoiding implicit conversions that prevent index seeks.
-- **Central Package Management** (`Directory.Packages.props`) and `TreatWarningsAsErrors` for consistent builds.
+**Dapper** is used instead of an ORM: with stored procedures only, change tracking and LINQ add nothing, and Dapper maps procedure results (including multiple result sets and output parameters) explicitly.
 
 ---
 
@@ -231,7 +222,7 @@ Sample data (all minimums in the brief are checked by an integration test):
 | No Sign Off Date and today > End of Contract + 30 days | Relief Due | Yes |
 | Signed on, no Sign Off Date, otherwise | Onboard | Yes |
 
-The rules live in one place: `dbo.fn_CrewStatus`. See [open questions](#open-questions-for-the-client) for the window between End of Contract and End of Contract + 30 days.
+The rules live in one place: `dbo.fn_CrewStatus`. A crew member whose End of Contract passed 1–30 days ago is still Onboard; Relief Due starts on day 31. A Sign Off Date counts as signed off even when it is in the future.
 
 Age is computed in completed years (`dbo.fn_AgeInYears`). `DATEDIFF(YEAR)` alone over-counts before the birthday.
 
@@ -292,39 +283,7 @@ Base path `/api/v1`. All endpoints except `/health`, `/openapi/v1.json` and `/sw
 | GET | `/ships/{shipCode}/financial-reports/summary?period=yyyy-MM` | 200 | Summary financial report |
 | GET | `/health` | 200 | API and database health (no API key) |
 
-Example:
-
-```bash
-curl -H "X-Api-Key: local-dev-api-key" \
-  "http://localhost:5000/api/v1/ships/SHIP01/financial-reports/detail?period=2025-07"
-```
-
-```json
-{
-  "shipCode": "SHIP01",
-  "shipName": "Flying Dutchman",
-  "fiscalYearCode": "0112",
-  "reportType": "Detail",
-  "period": "2025-07",
-  "ytdFrom": "2025-01",
-  "ytdTo": "2025-07",
-  "rows": [
-    {
-      "accountNumber": "7120000",
-      "coaDescription": "AWARDS",
-      "accountType": "Child",
-      "level": 3,
-      "parentAccountNumber": "7100000",
-      "actual": null,
-      "budget": 1000.00,
-      "variance": -1000.00,
-      "ytdActual": 3200.00,
-      "ytdBudget": 3300.00,
-      "ytdVariance": -100.00
-    }
-  ]
-}
-```
+Ready-to-run requests with their expected results are in [How to verify](#how-to-verify).
 
 ---
 
@@ -426,39 +385,3 @@ docker compose up --build
 - If financial data grows large: a monthly summary table or indexed view per ship/account, partitioning by period, and caching reports for closed periods.
 - Read-heavy reporting could move to a readable secondary (Azure SQL read scale-out) without code changes beyond the connection string.
 - The API is versioned in the URL (`/api/v1`).
-
----
-
-## Open questions for the client
-
-The brief leaves some behaviour open. These are the current choices. Each is isolated in one place so it can change quickly once confirmed.
-
-| # | Question | Current behaviour | Where |
-|---|---|---|---|
-| 1 | Crew with no Sign Off Date whose End of Contract passed **1–30 days** ago | Onboard | `fn_CrewStatus` |
-| 2 | Sign Off Date set but in the future | Signed Off (excluded), following "If the Sign Off Date is set…" literally | `fn_CrewStatus` |
-| 3 | Several budget rows for the same ship/account/period (sample shows 0 and 1000) | Summed | `fn_FinancialReport` |
-| 4 | Variance when only one side has data | Missing side counts as 0; both missing → NULL | `fn_FinancialReport` |
-| 5 | "Only include records where budget or actual values are non-zero" | Row shown when any monthly or YTD value is non-zero | `fn_FinancialReport` |
-| 6 | Content of the summary report | Parent accounts only | `usp_FinancialReport_Get` |
-| 7 | Inactive ship in crew list / report | 422 with an explanatory message | crew and report procedures |
-| 8 | Search: one keyword across columns or per-column filters | One keyword across all columns except Status | `usp_Crew_ListByShip` |
-
----
-
-## Project structure
-
-```
-├── CHALLENGE.md                         original brief
-├── database/                            T-SQL scripts, ERD, deploy scripts
-├── docs/openapi.json                    exported OpenAPI 3.1 document
-├── src/
-│   ├── AeShipManagement.Api/            controllers, auth, error handling, OpenAPI
-│   ├── AeShipManagement.Application/    models, validators, services, repository interfaces
-│   └── AeShipManagement.Infrastructure/ Dapper repositories, stored procedure executor
-├── tests/
-│   ├── AeShipManagement.UnitTests/
-│   └── AeShipManagement.IntegrationTests/
-├── Dockerfile, docker-compose.yml, .env.example
-└── .github/workflows/ci.yml
-```
