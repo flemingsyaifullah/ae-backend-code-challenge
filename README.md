@@ -391,17 +391,76 @@ docker compose up --build
 
 ## Project structure
 
+The database is listed file by file because the stored procedures hold the business logic. C# projects are listed by folder and class.
+
 ```
-├── CHALLENGE.md                         original brief
-├── database/                            T-SQL scripts, ERD, deploy scripts
-├── docs/openapi.json                    exported OpenAPI 3.1 document
+├── CHALLENGE.md                                 original brief
+├── database/
+│   ├── schema.sql                               tables, keys, check constraints, indexes
+│   ├── views/
+│   │   ├── vw_AccountTree.sql                   chart of accounts with level and sort order
+│   │   └── vw_AccountHierarchy.sql              ancestor/descendant pairs for parent roll-ups
+│   ├── functions/
+│   │   ├── fn_CrewStatus.sql                    Onboard / Relief Due / Planned / Signed Off
+│   │   ├── fn_AgeInYears.sql                    age in completed years
+│   │   ├── fn_FormatDisplayDate.sql             display date such as "05 Apr 2025"
+│   │   ├── fn_ContainsPattern.sql               escaped LIKE pattern for search
+│   │   ├── fn_FiscalYtdRange.sql                YTD start and end from the fiscal year code
+│   │   └── fn_FinancialReport.sql               actuals, budgets, roll-up, variance, non-zero filter
+│   ├── procedures/
+│   │   ├── usp_Crew_ListByShip.sql              crew list: paging, sorting, search, as-of date
+│   │   ├── usp_FinancialReport_Get.sql          report header and rows, shared by Detail and Summary
+│   │   ├── usp_FinancialReport_Detail.sql       every account level
+│   │   ├── usp_FinancialReport_Summary.sql      parent accounts only
+│   │   ├── usp_User_Create.sql                  create a user
+│   │   ├── usp_User_GetById.sql                 get a user
+│   │   ├── usp_User_List.sql                    list users (paged)
+│   │   ├── usp_UserRole_List.sql                list roles
+│   │   ├── usp_Ship_Create.sql                  create a ship
+│   │   ├── usp_Ship_GetByCode.sql               get a ship
+│   │   ├── usp_Ship_List.sql                    list ships (paged, status filter)
+│   │   ├── usp_UserShip_Assign.sql              assign a ship to a user (idempotent)
+│   │   ├── usp_UserShip_Unassign.sql            remove an assignment
+│   │   └── usp_UserShip_ListShipsByUser.sql     ships assigned to a user
+│   ├── seed/
+│   │   ├── reference_data.sql                   fiscal year types, nationalities, ranks, roles, chart of accounts
+│   │   └── sample_data.sql                      ships, users, crew, contracts, budgets, transactions
+│   ├── security/api_login.sql                   execute-only login for the API
+│   ├── deploy-order.txt                         script order, used by the deploy scripts and the tests
+│   ├── deploy.ps1, deploy.sh                    deploy all scripts (Windows; Linux and Docker)
+│   └── ERD.md                                   entity relationship diagram (Mermaid)
+├── docs/openapi.json                            exported OpenAPI 3.1 document
 ├── src/
-│   ├── AeShipManagement.Api/            controllers, auth, error handling, OpenAPI
-│   ├── AeShipManagement.Application/    models, validators, services, repository interfaces
-│   └── AeShipManagement.Infrastructure/ Dapper repositories, stored procedure executor
+│   ├── AeShipManagement.Api/
+│   │   ├── Controllers/           UsersController, UserRolesController, ShipsController,
+│   │   │                          CrewController, FinancialReportsController
+│   │   ├── Authentication/        ApiKeyAuthentication
+│   │   ├── Errors/                ApiExceptionHandler
+│   │   ├── OpenApi/               ApiKeySecurityTransformer
+│   │   └── Program.cs
+│   ├── AeShipManagement.Application/
+│   │   ├── Users/                 UserService, UserValidators, UserModels, IUserRepository
+│   │   ├── Ships/                 ShipService, ShipAssignmentService, ShipValidators, ShipModels,
+│   │   │                          IShipRepository (+ IShipAssignmentRepository)
+│   │   ├── Crew/                  CrewService (+ ICrewRepository), CrewListQueryValidator, CrewModels
+│   │   ├── FinancialReports/      FinancialReportService (+ IFinancialReportRepository), FinancialReportModels
+│   │   ├── Common/                AppExceptions, PagedResult, Paging, ValidationRules, UserIdRules
+│   │   └── DependencyInjection.cs
+│   └── AeShipManagement.Infrastructure/
+│       ├── Data/                  StoredProcedureExecutor, StoredProcedures, SqlParameters,
+│       │                          SqlErrorTranslator, SqlConnectionFactory, DatabaseOptions, DatabaseHealthCheck
+│       ├── Repositories/          UserRepository, ShipRepository, CrewRepository, FinancialReportRepository
+│       └── DependencyInjection.cs
 ├── tests/
 │   ├── AeShipManagement.UnitTests/
+│   │   ├── Validation/            CrewAndReportValidatorTests, UserAndShipValidatorTests
+│   │   ├── Services/              ServiceTests
+│   │   ├── Errors/                ErrorMappingTests
+│   │   └── Api/                   ApiPipelineTests, ApiFactory
 │   └── AeShipManagement.IntegrationTests/
+│       ├── CrewListProcedureTests, FinancialReportProcedureTests, SchemaConstraintTests,
+│       │   ExecuteOnlyPermissionTests, ApiEndToEndTests
+│       └── Infrastructure/        DatabaseFixture, Procedures
 ├── Dockerfile, docker-compose.yml, .env.example
 └── .github/workflows/ci.yml
 ```
