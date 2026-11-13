@@ -24,6 +24,7 @@ The original brief is kept unchanged in [CHALLENGE.md](CHALLENGE.md).
 9. [Testing](#testing)
 10. [Docker and CI](#docker-and-ci)
 11. [Scalability considerations](#scalability-considerations)
+12. [Project structure](#project-structure)
 
 ---
 
@@ -385,3 +386,22 @@ docker compose up --build
 - If financial data grows large: a monthly summary table or indexed view per ship/account, partitioning by period, and caching reports for closed periods.
 - Read-heavy reporting could move to a readable secondary (Azure SQL read scale-out) without code changes beyond the connection string.
 - The API is versioned in the URL (`/api/v1`).
+
+---
+
+## Project structure
+
+```
+├── CHALLENGE.md                         original brief
+├── database/                            T-SQL scripts, ERD, deploy scripts
+├── docs/openapi.json                    exported OpenAPI 3.1 document
+├── src/
+│   ├── AeShipManagement.Api/            controllers, auth, error handling, OpenAPI
+│   ├── AeShipManagement.Application/    models, validators, services, repository interfaces
+│   └── AeShipManagement.Infrastructure/ Dapper repositories, stored procedure executor
+├── tests/
+│   ├── AeShipManagement.UnitTests/
+│   └── AeShipManagement.IntegrationTests/
+├── Dockerfile, docker-compose.yml, .env.example
+└── .github/workflows/ci.yml
+```
