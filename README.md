@@ -144,8 +144,9 @@ Sample data (all minimums in the brief are checked by an integration test):
 - 6 ships: 4 active and 2 inactive, fiscal years `0112` and `0403`
 - 20+ crew per ship (152 crew members, 179 contracts), 19 ranks, realistic handovers with overlapping service periods, previous contracts on other ships
 - Chart of accounts: 3 levels, 8 parent accounts with 5–7 children each
-- Budgets for 3 ships (one `0403`), January 2024 – December 2025, every child account
-- Actual transactions for the same 3 ships, January 2024 – October 2025, several rows per period, including zero-value rows and periods without rows
+- Budgets for 3 ships (one `0403`), January 2024 – December 2025, for 10 child accounts (two in each of five account groups); the other accounts exist in the chart of accounts without values
+- Actual transactions for the same 3 ships and accounts, January 2024 – October 2025, one or two rows per period, including zero-value rows and periods without rows
+- About 1,900 rows in total (721 budget rows, 696 transactions), small enough to check by hand
 - Crew dates are offsets from the day the script runs, so Onboard, Relief Due, Planned and Signed Off crew exist whenever the data is loaded. The README sample rows (`CREW001`, `CREW002`) keep their original fixed dates.
 - `SHIP01` accounts `7120000` and `7135000` reproduce the child rows of the example report for July 2025.
 
@@ -176,7 +177,7 @@ Age is computed in completed years (`dbo.fn_AgeInYears`). `DATEDIFF(YEAR)` alone
 - **Detail** returns every account level. **Summary** returns parent accounts only.
 - Reports and crew lists are only available for **active** ships (`422` for inactive ships).
 
-**Note on the example report in the brief:** its child rows are reproduced exactly by the sample data (`7120000` and `7135000`, July 2025). Some parent figures in the example do not add up (for example, 9600 − 9900 is shown as a YTD variance of 0), so the implementation follows the stated rules (parent = sum of children, variance = actual − budget) rather than those figures.
+**Note on the example report in the brief:** its child rows are reproduced exactly by the sample data (`7120000` and `7135000`, July 2025), and `7100000` holds only those two accounts, as in the example, so its YTD actual is 9,600. Some parent figures in the example do not add up (for example, 9600 − 9900 is shown as a YTD variance of 0), so the implementation follows the stated rules (parent = sum of children, variance = actual − budget) rather than those figures.
 
 ---
 
